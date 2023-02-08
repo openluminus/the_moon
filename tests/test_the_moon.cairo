@@ -2,29 +2,60 @@
 from starkware.cairo.common.cairo_builtins import HashBuiltin
 from starkware.cairo.common.alloc import alloc
 
-from src.the_moon import register_voters, voter_info
- 
+from src.the_moon import register_voters, voter_info, voting_state, vote
+
 @external
-func test_register_voters{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}() {
+func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}() {
     alloc_locals;
     let (local addresses: felt*) = alloc();
-    assert addresses[0] = 111;
-    assert addresses[1] = 222;
-    assert addresses[2] = 333;
-    register_voters(3, addresses);
+    let registered_voter = 111;
+    assert addresses[0] = registered_voter;
+    register_voters(1, addresses);
+    %{ context.registered_voter = ids.registered_voter # Store registered voter in context %}
 
-    // Check registered voters
-    let (voter) = voter_info.read(111);
+    return ();
+}
+
+@external
+func test_vote_yes_success{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}() {
+    alloc_locals;
+    local registered_voter;
+    %{
+        start_prank(context.registered_voter)
+        ids.registered_voter = context.registered_voter # Read registered voter from context to local variable
+    %}
+    vote(1);
+
+    // Check voting state
+    let (state) = voting_state.read();
+    assert state.to_the_moon = 0;
+    assert state.back_to_earth = 1;
+
+    // Check voter info
+    let (voter) = voter_info.read(registered_voter);
     assert voter.allowed = 1;
+    assert voter.voted = 1;
+    return ();
+}
 
-    let (voter) = voter_info.read(222);
+@external
+func test_vote_no_success{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}() {
+    alloc_locals;
+    local registered_voter;
+    %{
+        start_prank(context.registered_voter)
+        ids.registered_voter = context.registered_voter # Read registered voter from context to local variable
+    %}
+    vote(0);
+
+    // Check voting state
+    let (state) = voting_state.read();
+    assert state.to_the_moon = 1;
+    assert state.back_to_earth = 0;
+
+    // Check voter info
+    let (voter) = voter_info.read(registered_voter);
     assert voter.allowed = 1;
-
-    let (voter) = voter_info.read(333);
-    assert voter.allowed = 1;
-
-    // Check example non-registered voter
-    let (voter) = voter_info.read(4231421);
-    assert voter.allowed = 0;
+    assert voter.voted = 1;
     return ();
 }
